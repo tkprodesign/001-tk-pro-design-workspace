@@ -1,0 +1,205 @@
+/**
+ * ============================================================
+ * GitHub Client
+ * ============================================================
+ */
+
+class GitHubClient {
+
+  static request(endpoint, method, body) {
+
+    const options = {
+      method: method || "get",
+      muteHttpExceptions: true,
+      headers: {
+        Authorization: "Bearer " + getGitHubToken(),
+        Accept: "application/vnd.github+json"
+      }
+    };
+
+    if (body) {
+      options.contentType = "application/json";
+      options.payload = JSON.stringify(body);
+    }
+
+    const response = UrlFetchApp.fetch(
+      CONFIG.GITHUB_API + endpoint,
+      options
+    );
+
+    const code = response.getResponseCode();
+
+    if (code >= 400) {
+      throw new Error(response.getContentText());
+    }
+
+    return JSON.parse(response.getContentText());
+
+  }
+
+  static getRepository() {
+
+    return this.request(
+      "/repos/" +
+      CONFIG.GITHUB_OWNER +
+      "/" +
+      CONFIG.GITHUB_REPO
+    );
+
+  }
+
+  /**
+   * Returns SHA if file exists.
+   */
+  static getFileSHA(path) {
+
+    try {
+
+      const file = this.request(
+        "/repos/" +
+        CONFIG.GITHUB_OWNER +
+        "/" +
+        CONFIG.GITHUB_REPO +
+        "/contents/" +
+        encodeURIComponent(path) +
+        "?ref=" +
+        CONFIG.GITHUB_BRANCH
+      );
+
+      return file.sha;
+
+    } catch (e) {
+
+      return null;
+
+    }
+
+  }
+
+  /**
+   * Upload or update a file.
+   */
+  static uploadFile(path, blob, message) {
+
+    const sha = this.getFileSHA(path);
+
+    const body = {
+      message: message,
+      branch: CONFIG.GITHUB_BRANCH,
+      content: SyncUtils.base64Encode(blob)
+    };
+
+    if (sha) {
+      body.sha = sha;
+    }
+
+    return this.request(
+
+      "/repos/" +
+      CONFIG.GITHUB_OWNER +
+      "/" +
+      CONFIG.GITHUB_REPO +
+      "/contents/" +
+      encodeURIComponent(path),
+
+      "put",
+
+      body
+
+    );
+
+  }
+  /**
+ * Upload a Drive file to GitHub.
+ */
+static syncFile(item) {
+
+  if (item.type !== "FILE") {
+    return;
+  }
+
+  const file = DriveApp.getFileById(item.id);
+
+  const blob = file.getBlob();
+
+  const githubPath = GitHubMapper.toGitHubPath(item);
+
+  this.uploadFile(
+    githubPath,
+    blob,
+    "Sync: " + githubPath
+  );
+
+  LoggerUtil.success(
+    "Synced: " + githubPath
+  );
+
+}
+
+/**
+ * Delete a file from GitHub.
+ */
+static deleteFile(path, message) {
+
+  const sha = this.getFileSHA(path);
+
+  if (!sha) {
+    return;
+  }
+
+  return this.request(
+
+    "/repos/" +
+    CONFIG.GITHUB_OWNER +
+    "/" +
+    CONFIG.GITHUB_REPO +
+    "/contents/" +
+    encodeURIComponent(path),
+
+    "delete",
+
+    {
+      message: message,
+      branch: CONFIG.GITHUB_BRANCH,
+      sha: sha
+    }
+
+  );
+
+}
+
+/**
+ * Upload CHANGELOG.md
+ */
+static uploadTextFile(path, text, message) {
+
+  const sha = this.getFileSHA(path);
+
+  const body = {
+    message: message,
+    branch: CONFIG.GITHUB_BRANCH,
+    content: SyncUtils.base64EncodeText(text)
+  };
+
+  if (sha) {
+    body.sha = sha;
+  }
+
+  return this.request(
+
+    "/repos/" +
+    CONFIG.GITHUB_OWNER +
+    "/" +
+    CONFIG.GITHUB_REPO +
+    "/contents/" +
+    encodeURIComponent(path),
+
+    "put",
+
+    body
+
+  );
+
+}
+
+}
