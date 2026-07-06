@@ -1,0 +1,65 @@
+name: Deploy to Dropbox
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Dropbox CLI
+        run: |
+          curl -L https://www.dropbox.com/download?dl=packages/dropbox.py -o dropbox.py
+          chmod +x dropbox.py
+          sudo mv dropbox.py /usr/local/bin/dropbox.py
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install Dropbox SDK
+        run: |
+          pip install dropbox
+
+      - name: Sync Repository to Dropbox
+        env:
+          DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
+        run: |
+          python << 'EOF'
+          import os
+          import dropbox
+
+          TOKEN = os.environ["DROPBOX_ACCESS_TOKEN"]
+
+          dbx = dropbox.Dropbox(TOKEN)
+
+          LOCAL_ROOT = "workspace"
+          DROPBOX_ROOT = "/Brand Management/2026/001 - TK Pro Design"
+
+          for root, dirs, files in os.walk(LOCAL_ROOT):
+              for file in files:
+
+                  local_path = os.path.join(root, file)
+
+                  relative = os.path.relpath(local_path, LOCAL_ROOT)
+
+                  dropbox_path = DROPBOX_ROOT + "/" + relative.replace("\\", "/")
+
+                  with open(local_path, "rb") as f:
+                      dbx.files_upload(
+                          f.read(),
+                          dropbox_path,
+                          mode=dropbox.files.WriteMode.overwrite
+                      )
+
+                  print("Uploaded:", dropbox_path)
+
+          print("Dropbox synchronization complete.")
+          EOF
